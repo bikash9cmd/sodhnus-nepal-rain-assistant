@@ -1,0 +1,7 @@
+.venv
+tests
+docs
+eval
+data
+.git
+artifacts

@@ -1,0 +1,6 @@
+# pandas + pyarrow are ~250 MB installed, at the limit for zip packages, so the function ships as an image.
+FROM public.ecr.aws/lambda/python:3.12-arm64
+COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
+COPY sodhnus ${LAMBDA_TASK_ROOT}/sodhnus
+CMD ["sodhnus.aws.handlers.api"]

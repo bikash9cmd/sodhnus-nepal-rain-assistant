@@ -1,0 +1,23 @@
+[project]
+name = "sodhnus"
+version = "1.0.0"
+description = "A bilingual Nepali and English assistant that answers rainfall questions only from verified data"
+requires-python = ">=3.12"
+readme = "README.md"
+license = {text = "MIT"}
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+# Bilingual sentence templates and gazetteer rows read better unwrapped.
+"sodhnus/answer.py" = ["E501"]
+"sodhnus/places.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

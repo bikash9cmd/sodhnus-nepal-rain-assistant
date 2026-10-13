@@ -1,0 +1,81 @@
+{
+  "wrong_answers": {
+    "digit_swap": {
+      "caught": 34,
+      "total": 34,
+      "rate": 1.0
+    },
+    "forecast": {
+      "caught": 47,
+      "total": 47,
+      "rate": 1.0
+    },
+    "invented_record": {
+      "caught": 27,
+      "total": 34,
+      "rate": 0.794
+    },
+    "minus_1": {
+      "caught": 38,
+      "total": 39,
+      "rate": 0.974
+    },
+    "plus_10pct": {
+      "caught": 39,
+      "total": 39,
+      "rate": 1.0
+    },
+    "plus_3": {
+      "caught": 39,
+      "total": 39,
+      "rate": 1.0
+    },
+    "times_10": {
+      "caught": 39,
+      "total": 39,
+      "rate": 1.0
+    },
+    "unlooked_station": {
+      "caught": 44,
+      "total": 44,
+      "rate": 1.0
+    },
+    "wrong_field": {
+      "caught": 34,
+      "total": 35,
+      "rate": 0.971
+    }
+  },
+  "wrong_answers_overall": {
+    "caught": 341,
+    "total": 350,
+    "rate": 0.974
+  },
+  "missed_examples": {
+    "invented_record": [
+      "The wettest days at Surkhet on record: 15 August 2014 (30 Saun 2071 BS): 427 mm; 26 July 2016 (11 Saun 2073 BS): 228.6 mm; 26 June 2015 (11 Asar 2072 BS): 176.3",
+      "पोखरामा रेकर्डमा सबैभन्दा धेरै पानी परेका दिन: २०७२ असार ३१ (२०१५-०७-१६): ३०५.३ मिमि; २०७८ भदौ १८ (२०२१-०९-०३): २७९.९ मिमि; २०७३ असोज २ (२०१६-०९-१८): २७४.३ मिमि"
+    ],
+    "minus_1": [
+      "Melamchi has no station in this network; the nearest is Kathmandu Airport, 26 km away, and rain there can differ. Kathmandu Airport recorded 14 mm on 15 June 20"
+    ],
+    "wrong_field": [
+      "Melamchi has no station in this network; the nearest is Kathmandu Airport, 26 km away, and rain there can differ. Kathmandu Airport recorded 42 mm on 15 June 20"
+    ]
+  },
+  "right_answers": {
+    "template_answers": 47,
+    "template_rejected": 0,
+    "paraphrases": 15,
+    "paraphrases_rejected": 1,
+    "rejected": [
+      {
+        "answer": "Kathmandu Airport recorded nearly 200 mm on 28 September 2024, a station record.",
+        "why": [
+          "the number 200 does not come from any tool result",
+          "it leaves out the main figure for Kathmandu Airport (194.1)"
+        ]
+      }
+    ]
+  }
+}
