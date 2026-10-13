@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Sodhnus - bilingual rainfall Q&A for Nepal on Amazon Bedrock (Nova Lite + Guardrails), answering
+  only from Barsha's gold tables. API Gateway HTTP API + one Lambda + DynamoDB answer log.
+  Deploy: infra/README.md. Cost: docs/COST.md.
+
+Parameters:
+  BarshaLakeBucket:
+    Type: String
+    Description: Name of Barsha's lake bucket (the LakeBucket output of the Barsha stack).
+  GoldPrefix:
+    Type: String
+    Default: gold
+  ModelId:
+    Type: String
+    Default: apac.amazon.nova-lite-v1:0
+    Description: Bedrock model or inference profile. Nova Lite through the APAC cross-region profile.
+  Backend:
+    Type: String
+    Default: bedrock
+    AllowedValues: [bedrock, rules]
+    Description: rules answers without a model (the fallback path); use it to run with no Bedrock spend.
+  OpsEmail:
+    Type: String
+    Default: ""
+    Description: Optional email for alarms and the budget warning.
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 20
+
+Conditions:
+  HasOpsEmail: !Not [!Equals [!Ref OpsEmail, ""]]
+
+Globals:
+  Function:
+    Architectures: [arm64]
+    Tracing: Active
+
+Resources:
+  # ---------------- guardrail ----------------
+  Guardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: !Sub "${AWS::StackName}-guardrail"
+      Description: Keeps the assistant to measured rainfall. Bilingual checks in sodhnus/guard.py run first.
+      BlockedInputMessaging: >-
+        I can only answer questions about rain already measured at Nepal's weather stations.
+        म नेपालका मौसम स्टेशनमा नापिएको वर्षाबारे मात्र जवाफ दिन सक्छु।
+      BlockedOutputsMessaging: >-
+        I couldn't give a reliable answer to that. Please ask about one place and one date.
+        त्यसको भरपर्दो जवाफ दिन सकिनँ। कृपया एउटा ठाउँ र एउटा मितिबारे सोध्नुहोस्।
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Name: Forecasts
+            Type: DENY
+            Definition: Predictions of future rain, weather, floods or landslides, or advice based on them.
+            Examples:
+              - Will it rain in Kathmandu tomorrow?
+              - How much rain will Pokhara get next week?
+              - Is a flood coming to Biratnagar?
+          - Name: SafetyAdvice
+            Type: DENY
+            Definition: Advice on whether travel, evacuation or any activity is safe.
+            Examples:
+              - Is it safe to drive to Pokhara today?
+              - Should I evacuate my house?
+      ContentPolicyConfig:
+        FiltersConfig:
+          - {Type: HATE, InputStrength: HIGH, OutputStrength: HIGH}
+          - {Type: INSULTS, InputStrength: HIGH, OutputStrength: HIGH}
+          - {Type: SEXUAL, InputStrength: HIGH, OutputStrength: HIGH}
+          - {Type: VIOLENCE, InputStrength: MEDIUM, OutputStrength: MEDIUM}
+          - {Type: MISCONDUCT, InputStrength: HIGH, OutputStrength: HIGH}
+          # Prompt-attack filtering applies to input only.
+          - {Type: PROMPT_ATTACK, InputStrength: HIGH, OutputStrength: NONE}
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+          - {Type: PHONE, Action: ANONYMIZE}
+          - {Type: EMAIL, Action: ANONYMIZE}
+
+  GuardrailVersion:
+    Type: AWS::Bedrock::GuardrailVersion
+    Properties:
+      GuardrailIdentifier: !Ref Guardrail
+      Description: Version used by the API function. Bump by changing this description.
+
+  # ---------------- answer log ----------------
+  AskLog:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: id, AttributeType: S}
+      KeySchema:
+        - {AttributeName: id, KeyType: HASH}
+      # Questions are redacted before storage and kept 30 days.
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+      SSESpecification: {SSEEnabled: true}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: false}
+
+  # ---------------- API ----------------
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      # Stage-wide throttle: the cheapest denial-of-wallet control there is. Every request that
+      # gets through can cost Bedrock tokens and guardrail text units.
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 5
+      CorsConfiguration:
+        AllowMethods: [GET, POST]
+        AllowOrigins: ["*"]
+        AllowHeaders: [content-type]
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      DockerContext: ..
+      Dockerfile: infra/Dockerfile.lambda
+      DockerTag: v1
+    Properties:
+      PackageType: Image
+      MemorySize: 1024
+      Timeout: 30
+      # A second cap on spend and on Bedrock throttling: at most 10 answers in flight.
+      ReservedConcurrentExecutions: 10
+      Environment:
+        Variables:
+          SODHNUS_GOLD: !Sub "s3://${BarshaLakeBucket}/${GoldPrefix}"
+          SODHNUS_BACKEND: !Ref Backend
+          SODHNUS_MODEL_ID: !Ref ModelId
+          SODHNUS_BEDROCK_REGION: !Ref AWS::Region
+          SODHNUS_GUARDRAIL_ID: !GetAtt Guardrail.GuardrailId
+          SODHNUS_GUARDRAIL_VERSION: !GetAtt GuardrailVersion.Version
+          SODHNUS_LOG_TABLE: !Ref AskLog
+      Policies:
+        - Statement:
+            - Sid: ReadBarshaGoldOnly
+              Effect: Allow
+              Action: [s3:GetObject]
+              Resource: !Sub "arn:aws:s3:::${BarshaLakeBucket}/${GoldPrefix}/*"
+            - Sid: WriteAnswerLog
+              Effect: Allow
+              Action: [dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: !GetAtt AskLog.Arn
+            - Sid: InvokeNovaOnly
+              Effect: Allow
+              Action: [bedrock:InvokeModel]
+              # The APAC profile routes to Nova Lite in several APAC regions, so the foundation
+              # model is allowed in any region but only this model.
+              Resource:
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ModelId}"
+                - "arn:aws:bedrock:*::foundation-model/amazon.nova-lite-v1:0"
+            - Sid: UseOurGuardrail
+              Effect: Allow
+              Action: [bedrock:ApplyGuardrail]
+              Resource: !GetAtt Guardrail.GuardrailArn
+      Events:
+        Ask:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Method: POST, Path: /ask}
+        Feedback:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Method: POST, Path: /feedback}
+        Health:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Method: GET, Path: /health}
+
+  ApiFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
+      RetentionInDays: 30
+
+  # ---------------- alarms ----------------
+  OpsTopic:
+    Type: AWS::SNS::Topic
+
+  OpsSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasOpsEmail
+    Properties: {TopicArn: !Ref OpsTopic, Protocol: email, Endpoint: !Ref OpsEmail}
+
+  FallbackAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: >-
+        Many answers fell back to templates in an hour: Bedrock is failing or throttled, or the model
+        keeps failing the fact check (a model or prompt change). Answers are still correct, just plainer.
+      Namespace: Sodhnus
+      MetricName: Fallbacks
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OpsTopic]
+
+  TokenSpendAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: >-
+        Over 5 million input tokens in a day, about 1,000x a normal question. Scripted abuse or a
+        tool loop; the throttle and concurrency cap bound it, this says it is happening.
+      Namespace: Sodhnus
+      MetricName: InputTokens
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 5000000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OpsTopic]
+
+  ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: The API function is throwing (most likely the gold tables failed to load).
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{Name: FunctionName, Value: !Ref ApiFunction}]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OpsTopic]
+
+  SlowAnswersAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: p90 answer time over 8 seconds for 15 minutes.
+      Namespace: Sodhnus
+      MetricName: LatencyMs
+      ExtendedStatistic: p90
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 8000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OpsTopic]
+
+  Budget:
+    Type: AWS::Budgets::Budget
+    Condition: HasOpsEmail
+    Properties:
+      Budget:
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: {Amount: !Ref MonthlyBudgetUsd, Unit: USD}
+      NotificationsWithSubscribers:
+        - Notification: {NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80}
+          Subscribers: [{SubscriptionType: EMAIL, Address: !Ref OpsEmail}]
+        - Notification: {NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100}
+          Subscribers: [{SubscriptionType: EMAIL, Address: !Ref OpsEmail}]
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
+  GuardrailId:
+    Value: !GetAtt Guardrail.GuardrailId
+  AskLogTable:
+    Value: !Ref AskLog
