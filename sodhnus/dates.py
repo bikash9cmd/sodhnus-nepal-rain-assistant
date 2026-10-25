@@ -209,6 +209,11 @@ def find_years(question: str) -> list[tuple[str, int]]:
     return out
 
 
+# How far back to look for a year-less day that only exists in some years: 29 February comes round
+# every 4 AD years, and BS month lengths change every year, so Asar 32 can be missing for two in a row.
+_LOOKBACK_YEARS = 8
+
+
 def resolve(mention: DateMention, latest: date) -> tuple[date, bool]:
     """Turn a mention into an AD date. With no year, use the most recent such day on or before
     `latest` and say so (the bool), rather than guessing silently."""
@@ -220,16 +225,15 @@ def resolve(mention: DateMention, latest: date) -> tuple[date, bool]:
         return date(mention.year, mention.month, mention.day), False
     if mention.calendar == "BS":
         by, _, _ = ad_to_bs(latest)
-        for y in (by, by - 1):
-            try:
-                d = bs_to_ad(y, mention.month, mention.day)
-            except ValueError:
-                continue
-            if d <= latest:
-                return d, True
-        raise ValueError("no such BS day")
-    for y in (latest.year, latest.year - 1):
-        d = date(y, mention.month, mention.day)
+        to_ad, start = bs_to_ad, by
+    else:
+        to_ad, start = date, latest.year
+    # Not every day exists every year ("29 February", "Asar 32"), so skip the years where it doesn't.
+    for y in range(start, start - _LOOKBACK_YEARS, -1):
+        try:
+            d = to_ad(y, mention.month, mention.day)
+        except ValueError:
+            continue
         if d <= latest:
             return d, True
-    raise ValueError("no such day")
+    raise ValueError(f"no such {mention.calendar} day")

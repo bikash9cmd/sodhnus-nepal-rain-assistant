@@ -33,6 +33,22 @@ def test_missing_year_uses_most_recent_day_and_says_so():
     assert resolve(m, date(2025, 8, 24)) == (date(2024, 9, 28), True)
 
 
+def test_missing_year_skips_years_where_the_day_does_not_exist():
+    # 2025 has no 29 February; the most recent one in the data is 2024's.
+    [m] = find_dates("Kathmandu rain on 29 February")
+    assert resolve(m, date(2025, 8, 24)) == (date(2024, 2, 29), True)
+    # On 2082 Asar 17, this year's Asar 32 is still ahead and 2081 and 2080 Asar had 31 days.
+    [m] = find_dates("Pokhara on असार ३२")
+    assert resolve(m, date(2025, 7, 1)) == (date(2022, 7, 16), True)
+
+
+@pytest.mark.parametrize("question", ["Kathmandu rain on 31 April", "Kathmandu rain on 30 February"])
+def test_missing_year_still_rejects_days_that_never_exist(question):
+    [m] = find_dates(question)
+    with pytest.raises(ValueError):
+        resolve(m, date(2025, 8, 24))
+
+
 def test_english_words_that_look_like_months_are_ignored():
     assert find_dates("May I ask about rain in Pokhara?") == []
     assert find_dates("push the data") == []
