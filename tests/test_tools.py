@@ -63,6 +63,11 @@ def test_days_after_the_data_ends(gold):
     assert r["status"] == "after_data_end" and "rain_mm" not in r
 
 
+def test_leap_day_without_a_year_finds_the_last_leap_year(gold):
+    r = tools.call(gold, "rain_on_day", {"place": "Kathmandu", "date": "02-29", "calendar": "AD"})
+    assert "error" not in r and r["date"] == "2024-02-29"
+
+
 def test_far_place_gets_no_number(gold):
     r = tools.call(gold, "rain_on_day", {"place": "Chitwan", "date": "2024-09-28", "calendar": "AD"})
     assert r["status"] == "no_station_nearby" and "rain_mm" not in r
