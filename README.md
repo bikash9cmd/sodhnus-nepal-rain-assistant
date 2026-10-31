@@ -1,5 +1,7 @@
 # Sodhnus (सोध्नुस्, "please ask"): rainfall questions about Nepal, answered only from verified data
 
+[![Try it live](https://img.shields.io/badge/Try_it-live-2ea44f?style=for-the-badge)](https://sodhnus-nepal-rain-assistant.onrender.com)
+
 Sodhnus is a bilingual Nepali and English assistant on Amazon Bedrock for reporters, disaster responders and anyone asking "how much did it actually rain?". It answers from my [Barsha](https://github.com/bikash9cmd/barsha-nepal-monsoon-lakehouse) rainfall tables and nothing else. A language model (Amazon Nova Lite) understands the question and writes the answer, but it can only get facts through five read-only tools, and every number in its answer is checked against what those tools returned before anyone sees it. It refuses to forecast.
 
 ```text
@@ -112,6 +114,16 @@ One Lambda, no vector database, no agent framework. The model's only access to d
 ## AWS AI Practitioner topics this covers
 
 Foundation model selection and cost trade-offs; prompt engineering (system prompt, greedy decoding for tool use); tool use / function calling with the Converse API; why not RAG for numeric tables; Bedrock Guardrails (denied topics, content filters, prompt-attack filter, PII); hallucination detection; evaluating a GenAI system with a held-out set and adversarial tests; responsible AI (transparency, refusal design, language fairness, privacy); and security for LLM apps (prompt injection, least privilege, denial-of-wallet).
+
+## Try it live
+
+**[https://sodhnus-nepal-rain-assistant.onrender.com](https://sodhnus-nepal-rain-assistant.onrender.com)**
+
+Ask how much it rained somewhere in Nepal and how unusual it was, in English, Nepali or romanised Nepali, with Bikram Sambat dates. Ask it to forecast and watch it refuse.
+
+It runs on a free server that sleeps when nobody is using it, so the first visit can take a minute to wake up. Everything runs offline: no API keys, no cloud account.
+
+To run the same page locally: `pip install -r requirements-app.txt` and then `streamlit run app.py`.
 
 ## Run it
 
