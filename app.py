@@ -5,11 +5,12 @@ streamlit run app.py
 
 import streamlit as st
 
+import brand
 from sodhnus import assistant
 from sodhnus.config import Settings
 from sodhnus.data import load
 
-st.set_page_config(page_title="Sodhnus", page_icon="🌧️", layout="centered")
+brand.page("sodhnus")
 
 EXAMPLES = [
     "How unusual was the rain in Kathmandu on असोज १२, 2081?",
@@ -39,18 +40,18 @@ with st.sidebar:
         "It refuses to forecast."
     )
 
-st.title("Sodhnus (सोध्नुस्)")
-st.caption("Rainfall questions about Nepal, answered only from verified data. English, Nepali or romanised Nepali.")
 
 st.session_state.setdefault("history", [])
 for role, text in st.session_state.history:
-    with st.chat_message(role):
+    with st.chat_message(role, avatar=brand.avatar(role, "sodhnus")):
         st.markdown(text)
 
 question = st.chat_input("Ask how much it rained, where, and how unusual it was") or picked
 if question:
-    st.chat_message("user").markdown(question)
+    st.chat_message("user", avatar=brand.avatar("user", "sodhnus")).markdown(question)
     a = assistant.ask(question, g, backend="rules")
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=brand.avatar("assistant", "sodhnus")):
         st.markdown(a.text)
     st.session_state.history += [("user", question), ("assistant", a.text)]
+
+brand.footer()
